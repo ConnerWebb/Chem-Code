@@ -7,7 +7,7 @@ from scipy import stats
 from scipy.optimize import curve_fit
 import sys
 import statistics
-
+import os
 
 
 class data:
@@ -21,7 +21,6 @@ class data:
 
         temp K lnKa_avg lnKa_stdev
         """
-        import os
 
         # import all the txt files
         self.data = {}
@@ -227,10 +226,8 @@ class data:
             plt.plot(x, ycalc)
             
             plt.show()            
-            
-            
-        
-            
+
+
 
 if __name__=='__main__':
 
@@ -270,5 +267,3 @@ if __name__=='__main__':
     # plt.errorbar(x, LN_KA, yerr=e)
     # plt.plot(x, d.NLVHoff(x, dH, dS))
     # plt.show()
-    
-

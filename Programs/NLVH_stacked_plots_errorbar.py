@@ -7,6 +7,7 @@ from scipy import stats
 from scipy.optimize import curve_fit
 import sys
 import statistics
+import os
 
 
 class data:
@@ -16,7 +17,6 @@ class data:
         Import data from path into the following format
         data[temp(K^-1)] = average of rows with error bars [(avg1, avg2, ..., avg7), (std1, std2, ..., std7)]
         """
-        import os
 
         self.data = {}
         print("loading %s" % txt)
@@ -213,6 +213,3 @@ if __name__=='__main__':
     d = data("/home/cow/Chem-Code/File_Input/Lose_Files/LnKa_AA_d2o_2.txt")
     d.solve_nonlinear_stacked()
     sys.exit()
-    
-
-

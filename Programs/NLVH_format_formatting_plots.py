@@ -6,7 +6,7 @@ from scipy import optimize
 from scipy import stats
 from scipy.optimize import curve_fit
 import sys
-
+import os
 
 
 class data:
@@ -20,7 +20,6 @@ class data:
 
         temp K lnKa_avg lnKa_stdev
         """
-        import os
 
         # import all the txt files
         self.data = {}
@@ -158,11 +157,7 @@ class data:
             #plt.close()
             plt.show()
 
-            
-            
-            
-        
-            
+
 
 if __name__=='__main__':
 
@@ -171,7 +166,3 @@ if __name__=='__main__':
     d.solve_nonlinear()
 #   d.solve_linear()
     sys.exit()
-    
-   
-    
-
