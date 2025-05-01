@@ -235,7 +235,8 @@ class data:
 if __name__=='__main__':
 
     #d = data("spr_data_global.txt")
-    d = data("temp.txt")
+    # d = data("temp.txt")
+    d = data("/home/cow/Chem-Code/Lose_Files/temp.txt")
     d.solve_nonlinear()
 #   d.solve_linear()
     sys.exit()

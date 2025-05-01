@@ -168,7 +168,7 @@ class Fit(LigandEquib):
             ind += 1
         plt.xlabel( '[ligand] (uM)' )
         plt.ylabel( 'mole fraction' )  
-        plt.savefig("fit.svg", format='svg')
+        plt.savefig("/home/cow/Chem-Code/Graphs/AAD20_Graphs/fit.svg", format='svg')
         plt.show()
         plt.close()
 
@@ -252,7 +252,7 @@ class Fit(LigandEquib):
             ind += 1
         plt.xlabel( '[Adduct] (uM)' )
         plt.ylabel( 'mole fraction' )
-        plt.savefig("plot.svg", format='svg')
+        plt.savefig("/home/cow/Chem-Code/Graphs/AAD20_Graphs/plot.svg", format='svg')
         plt.show()
         plt.close()
         
@@ -267,8 +267,9 @@ class Fit(LigandEquib):
 if __name__ == "__main__":
      
     # change filename below
-    fname = r"c:\Users\kevan\Documents\Russell Group\Python Script\AAD2O_thermodynamics\temp_AA-D_15c_1.txt"
-    #fname = r"D:\DATA\UHMR DATA\GroEL\GroEL_ATP_Thermo_ULTIMATE Compendium\BigDaddy Calc\5C-1.txt"
+    # fname = r"c:\Users\kevan\Documents\Russell Group\Python Script\AAD2O_thermodynamics\temp_AA-D_15c_1.txt"
+    # fname = r"D:\DATA\UHMR DATA\GroEL\GroEL_ATP_Thermo_ULTIMATE Compendium\BigDaddy Calc\5C-1.txt"
+    fname = r"/home/cow/Chem-Code/File_Input/AAD2O_thermodynamics/temp_AA-D_5c_1.txt"
     fit = Fit(fname)
 
     # simple fit 

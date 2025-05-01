@@ -203,14 +203,14 @@ class data:
 
         plt.xlabel("1000/T(K^-1)", fontsize=12, fontname="Arial", labelpad=15)  # Set the x-axis label at the bottom
         # plt.tight_layout()
-        plt.savefig("stacked_plots.svg", format='svg')
+        plt.savefig("/home/cow/Chem-Code/Graphs/NLVH_SPE_Graphs/stacked_plots.svg", format='svg')
         plt.show()
 
 
 if __name__=='__main__':
 
     #d = data("spr_data_global.txt")
-    d = data("LnKa_AA_d2o_2.txt")
+    d = data("/home/cow/Chem-Code/File_Input/Lose_Files/LnKa_AA_d2o_2.txt")
     d.solve_nonlinear_stacked()
     sys.exit()
     

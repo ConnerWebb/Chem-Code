@@ -154,7 +154,7 @@ class data:
             plt.xlabel("1000/T(K^-1)")
             plt.ylabel("Ln(KA)")
             plt.legend(("fit", "exp"))
-            plt.savefig("%s_24C.png" % (col+1))
+            plt.savefig("/home/cow/Chem-Code/Graphs/NLVH_FFP_Graphs/%s_24C.png" % (col+1))
             #plt.close()
             plt.show()
 
@@ -167,7 +167,7 @@ class data:
 if __name__=='__main__':
 
     #d = data("spr_data_global.txt")
-    d = data("LnKa_int.txt")
+    d = data("File_Input/Lose_Files/LnKa_int.txt")
     d.solve_nonlinear()
 #   d.solve_linear()
     sys.exit()
