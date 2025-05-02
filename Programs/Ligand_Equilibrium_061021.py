@@ -4,6 +4,7 @@ import numpy
 import matplotlib.pyplot as plt
 from scipy import optimize
 from scipy import stats
+import csv
 
 class LigandEquib:
 
@@ -136,8 +137,17 @@ class Fit(LigandEquib):
 
         # print stats
         print("Results from sequential binding model")
-        for i,val in enumerate(1./numpy.array(q)):
-            print("Kd%i (uM) = %.6f" % (i+1,val*10.0**6.0))
+        kd_data = []
+        for i, val in enumerate(1. / numpy.array(q)):
+            kd_val = val * 1e6
+            print("Kd%i (uM) = %.6f" % (i + 1, kd_val))
+            kd_data.append([i + 1, kd_val])
+
+        # Write CSV
+        with open("/home/cow/Chem-Code/File_Output/Ligand_Equilibrium_061021/kd_values.csv", "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["Kd", "uM"])
+            writer.writerows(kd_data)
             
             # step = i+1
             # print(step)
