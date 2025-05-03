@@ -1,10 +1,53 @@
 #!/usr/env/bin python
 
+import os
+import csv
 import numpy
+import argparse
 import matplotlib.pyplot as plt
+from datetime import datetime
 from scipy import optimize
 from scipy import stats
-import csv
+
+
+print("\n")
+
+
+# Argument parser setup
+parser = argparse.ArgumentParser()
+parser.add_argument('--input-dir', default='/home/cow/Chem-Code/File_Input/AAD2O_thermodynamics')
+parser.add_argument('--csv-out-dir', default='/home/cow/Chem-Code/File_Output/Ligand_Equilibrium_061021')
+parser.add_argument('--svg-out-dir', default='/home/cow/Chem-Code/Graphs/AAD20_Graphs')
+parser.add_argument('--model-type', choices=['simple', 'complex'], default='simple')
+parser.add_argument('--initial-guess', type=float, default=10e-6) #"Initial guess for fitting (recommended: 1e-9 to 1e-3).
+parser.add_argument('--no-show', action='store_true')
+args = parser.parse_args()
+
+
+def select_input_file(directory):
+
+    print(f"Looking for input files in: {directory}\n")
+    
+    files = sorted([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
+    
+    if not files:
+        print("No files found in the directory.")
+        exit(1)
+    
+    for i, file in enumerate(files):
+        print(f"[{i+1}] {file}")
+    
+    while True:
+        try:
+            choice = int(input("\nEnter the number of the file you want to use: ")) - 1
+            if 0 <= choice < len(files):
+                selected = os.path.join(directory, files[choice])
+                print(f"\nSelected file: {selected}\n")
+                return selected
+            else:
+                print("Invalid selection. Please choose a valid number.")
+        except ValueError:
+            print("Please enter a valid number.")
 
 class LigandEquib:
 
@@ -35,11 +78,11 @@ class LigandEquib:
 
         Returns fractional abundance
         '''
-        # setup
+
         L = numpy.array(L)
-        
+
         # number of fractional species
-        species = len(Ks) + 1           
+        species = len(Ks) + 1
 
         # calc numerator
         num = []
@@ -54,9 +97,7 @@ class LigandEquib:
                     Kt = Kt * k
                 num.append(Kt * L**float(frac))
                 den += Kt * L**float(frac)
-
-        # now divide
-        return num/den
+        return numpy.array(num)/den
 
     def free_lipid(self, L, Kagg):
         '''
@@ -74,223 +115,168 @@ class LigandEquib:
         den = 4.0*Kagg
         return num/den
 
-
 class Fit(LigandEquib):
 
     def __init__(self, filename):
-        
-        # colour scheme
-        self.my_colors = { 1 : "#ff9933", 2 : '#ffd700', \
-                           3 : "#7fff00", 4 : '#00eeff', 5 : "#0331fc", \
-                           6 : "#ba1e8c", 7 : '#b30505', 8 : "#fc4f05", \
-                           9 : "#55966d" }
-        self.def_color = "#808080"
-        
-        # get raw data
-        raw = numpy.loadtxt(filename)
+        self.filename = filename
+        self.base_name = os.path.splitext(os.path.basename(filename))[0]
+        self.base_name = self.base_name.split('_', 1)[-1]  # remove prefix before first '_'
+        self.date_stamp = datetime.today().strftime('%Y-%m-%d')
 
-        # get Ptot
+        self.my_colors = { 1 : "#ff9933", 2 : '#ffd700', 3 : "#7fff00", 4 : '#00eeff', 5 : "#0331fc", 6 : "#ba1e8c", 7 : '#b30505', 8 : "#fc4f05", 9 : "#55966d" }
+        self.def_color = "#808080"
+
+        raw = numpy.loadtxt(filename)
         self.Ptot = raw[:1:,0][0]
         raw = raw[1:]
-
-        # extract [ligand]
         self.tmp_L  = raw[::,0]
-
-        # extract and resort fraction concentrations
         raw     = raw[::,1:]
         self.eF = [ raw[::,index] for index in range(len(raw[0])) ]
-        
-        # calc Lfree
+
         self.L = []
         for Lo,row in zip(self.tmp_L,raw):
             Lbound = 0.0
             for n,PorPL in enumerate(row):
                 Lbound += float(n)*PorPL*self.Ptot
-            
-            if Lo-Lbound < 0.0:
-                print("ERROR Lfree negative", Lo-Lbound)
-                self.L.append( 0.0 )
-            else:
-                self.L.append( Lo-Lbound )
-            #print(Lo-Lbound)
-        print(self.L)
-                
-####################################################################
-    def fit_Ks(self, guess= 10 *10.**-6):
-        # make a guess
-####################################################################   
-     
+            self.L.append(max(0.0, Lo-Lbound))
+
+    def fit_Ks(self, guess=args.initial_guess): # make a guess
         p = [ 1./guess for i in range(len(self.eF)-1) ]
-        #print(p)
-        p[1] = 1./(1*10.**-9)
         p[1] = 1./(2*10.**-8)
         p[2] = 1./(4*10.**-7)
         p[3] = 1./(4*10.**-3)
-        #p3 was **-3
 
         # now minimize scipy.fmin_X functions
-        q = optimize.fmin_powell(self.err_func, p, disp=0)
+        q = optimize.fmin_powell(self.err_func, p, disp=0) 
         #q = optimize.fmin_bfgs(self.err_func, p, disp=0)
-        
+
         # Alternatively use least squares
         #q = optimize.leastsq(self.err_func_array, p, args=(self.L))[0]
 
         # print stats
-        print("Results from sequential binding model")
         kd_data = []
         for i, val in enumerate(1. / numpy.array(q)):
             kd_val = val * 1e6
             print("Kd%i (uM) = %.6f" % (i + 1, kd_val))
             kd_data.append([i + 1, kd_val])
 
-        # Write CSV
-        with open("/home/cow/Chem-Code/File_Output/Ligand_Equilibrium_061021/kd_values.csv", "w", newline="") as csvfile:
+        #Write out results
+        output_dir_csv = args.csv_out_dir
+        output_dir_svg = args.svg_out_dir
+        os.makedirs(output_dir_csv, exist_ok=True)
+        os.makedirs(output_dir_svg, exist_ok=True)
+
+        csv_path = os.path.join(output_dir_csv, f"{self.base_name}_kd_values_{self.date_stamp}.csv")
+        svg_path = os.path.join(output_dir_svg, f"{self.base_name}_fit_{self.date_stamp}.svg")
+
+        with open(csv_path, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["Kd", "uM"])
             writer.writerows(kd_data)
-            
+
             # step = i+1
             # print(step)
             # micro = (val * ((4-step) + 1))/step
             # print("Kd%i (uM) = %.2f Kd_micro = %.2f" % (i+1,val*10.0**6.0, micro*10.0**6.0))
-            
         chi = self.err_func(q)
         mod = self.fractions(self.L, q)
-        r = stats.pearsonr( numpy.ndarray.flatten(numpy.array(mod)), numpy.ndarray.flatten(numpy.array(self.eF)) )[0]
+        r = stats.pearsonr(numpy.ndarray.flatten(numpy.array(mod)), numpy.ndarray.flatten(numpy.array(self.eF)))[0]
         print("chi**2=%.2f, R**2=%.2f" % (chi, r**2))
-        print()
-        
         # generate hi-res data for theoretical fit
         hr_x = numpy.arange(0, 1.25*max(self.L), 0.1 * 10.**-6)
         hr_mod = self.fractions(hr_x, q)
 
-        # now plot
         plt.figure(1)
         ind = 0
         X = numpy.array(self.L) * 10.**6
         for cf, ef in zip(hr_mod, self.eF):
-            if ind == 0:
-                color = self.def_color
-            else:
-                color = self.my_colors[ind%10]
+            color = self.def_color if ind == 0 else self.my_colors[ind%10]
             plt.plot(X, ef, "o", color=color)
             plt.plot(hr_x * 10**6, cf, "-", color=color)
             ind += 1
-        plt.xlabel( '[ligand] (uM)' )
-        plt.ylabel( 'mole fraction' )  
-        plt.savefig("/home/cow/Chem-Code/Graphs/AAD20_Graphs/fit.svg", format='svg')
-        plt.show()
+        plt.xlabel('[ligand] (uM)')
+        plt.ylabel('mole fraction')
+        plt.savefig(svg_path, format='svg')
+        if not args.no_show:
+            plt.show()
         plt.close()
 
     def err_func(self, p, weight=False):
-       calc = self.fractions(self.L, p)
-       diff = numpy.absolute(calc-self.eF)
-       
-       if weight:
-           # weighting function
-           weight = numpy.ones(diff[0].shape)
-           for i,j in enumerate(weight):
-               if i <= 6: #int(len(weight)/2):
-                           weight[i] = 2
-           return numpy.sum(diff * weight)
-       
-       else:
-           #return numpy.absolute(calc-self.eF).sum()
-           return numpy.square(calc - self.eF).sum()
+        calc = self.fractions(self.L, p)
+        diff = numpy.absolute(calc-self.eF)
+        if weight:
+            weight = numpy.ones(diff[0].shape)
+            for i in range(len(weight)):
+                if i <= 6: #int(len(weight)/2):
+                    weight[i] = 2
+            return numpy.sum(diff * weight)
+        else:
+            #return numpy.absolute(calc-self.eF).sum()
+            return numpy.square(calc - self.eF).sum()
 
     def err_func_array(self, p, l):
-       calc = self.fractions(self.L, p)
-       err = self.L*0. + 1.
-       for cf, ef in zip(calc, self.eF):
-           err = err + (cf-ef)**2
-       return err
-
-
+        calc = self.fractions(self.L, p)
+        err = self.L*0. + 1.
+        for cf, ef in zip(calc, self.eF):
+            err = err + (cf-ef)**2
+        return err
     #--- including lipid aggregate model ---
-    def complex_fit_Ks(self, guess= 5.*10.**-3, agg=1.*10.**-3):
-        
+    def complex_fit_Ks(self, guess=5.*10.**-3, agg=1.*10.**-3):
         # make a guess for KPL's
         p = [ 1./guess for i in range(len(self.eF)-1) ]
-
         # append K for lipid aggregate model
-        p.append( 1./agg )
-
+        p.append(1./agg)
         # now minimize scipy.fmin_X functions
+
         q = optimize.fmin_powell(self.err_func_agg, p, disp=0)
         #q = optimize.fmin_bfgs(self.err_func, p, disp=0)
         
         # Alternatively use least squares
         #q = optimize.leastsq(self.err_func_array, p, args=(self.L))[0]
-
-        # setup
         q = list(q)
-
-        # get chi
         chi = self.err_func_agg(q)
-        
-        # now reset L
         Kagg = q.pop()
         L = self.free_lipid(self.L, Kagg)
-        #print('Kn', 1./Kagg)
-
-        # calc model
         mod = self.fractions(L, q)
 
-        # print stats
         print("Results from adduct model")
         for i,val in enumerate(1./numpy.array(q)):
             print("Kd%i (uM) = %.2f" % (i+1,val*10.0**6.0))
         print("Kagg (uM) = %.2f" % (10.**6/Kagg))
-        r = stats.pearsonr( numpy.ndarray.flatten(numpy.array(mod)), numpy.ndarray.flatten(numpy.array(self.eF)) )[0]
+        r = stats.pearsonr(numpy.ndarray.flatten(numpy.array(mod)), numpy.ndarray.flatten(numpy.array(self.eF)))[0]
         print("chi**2=%.2f, R**2=%.2f" % (chi, r**2))
 
-        # generate hi-res data for theoretical fit
         hr_x = numpy.arange(0, max(L)*1.25, 0.1 * 10.**-6)
         hr_mod = self.fractions(hr_x, q)
 
-        # now plot
-        ind = 0
         plt.figure(2)
+        ind = 0
         X = numpy.array(L) * 10.**6
         for cf, ef in zip(hr_mod, self.eF):
-            if ind == 0:
-                color = self.def_color
-            else:
-                color = self.my_colors[ind%6]
+            color = self.def_color if ind == 0 else self.my_colors[ind%6]
             plt.plot(X, ef, "o", color=color)
             plt.plot(hr_x * 10**6, cf, "-", color=color)
             ind += 1
-        plt.xlabel( '[Adduct] (uM)' )
-        plt.ylabel( 'mole fraction' )
-        plt.savefig("/home/cow/Chem-Code/Graphs/AAD20_Graphs/plot.svg", format='svg')
-        plt.show()
+        plt.xlabel('[Adduct] (uM)')
+        plt.ylabel('mole fraction')
+        svg_path = os.path.join(args.svg_out_dir, f"{self.base_name}_fit_{self.date_stamp}.svg")
+        plt.savefig(svg_path, format='svg')
+        if not args.no_show:
+            plt.show()
         plt.close()
-        
+
     def err_func_agg(self, p, n=2):
         p = list(p)
         Ka = p.pop()
         L = self.free_lipid(self.L, Ka)
         calc = self.fractions(L, p)
         return numpy.square(calc - self.eF).sum()
-        
 
 if __name__ == "__main__":
-     
-    # change filename below
-    # fname = r"c:\Users\kevan\Documents\Russell Group\Python Script\AAD2O_thermodynamics\temp_AA-D_15c_1.txt"
-    # fname = r"D:\DATA\UHMR DATA\GroEL\GroEL_ATP_Thermo_ULTIMATE Compendium\BigDaddy Calc\5C-1.txt"
-    fname = r"/home/cow/Chem-Code/File_Input/AAD2O_thermodynamics/temp_AA-D_5c_1.txt"
+    fname = select_input_file(args.input_dir)
     fit = Fit(fname)
 
-    # simple fit 
-    fit.fit_Ks()
-    
-    # complex fit
-    #fit.complex_fit_Ks()
-
-
-
-
-
-
-    
+    if args.model_type == 'simple':
+        fit.fit_Ks()
+    elif args.model_type == 'complex':
+        fit.complex_fit_Ks()
