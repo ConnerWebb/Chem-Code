@@ -19,9 +19,16 @@ parser.add_argument('--input-dir', default='/home/cow/Chem-Code/File_Input/AAD2O
 parser.add_argument('--csv-out-dir', default='/home/cow/Chem-Code/File_Output/Ligand_Equilibrium_061021')
 parser.add_argument('--svg-out-dir', default='/home/cow/Chem-Code/Graphs/AAD20_Graphs')
 parser.add_argument('--model-type', choices=['simple', 'complex'], default='simple')
-parser.add_argument('--initial-guess', type=float, default=10e-6) #"Initial guess for fitting (recommended: 1e-9 to 1e-3).
+parser.add_argument('--initial-guess-range', nargs=2, type=float, metavar=('MIN_COEFF', 'MAX_COEFF'), default=[1.0, 10.0],
+                    help='Range of coefficients for initial guesses (e.g., --initial-guess-range 1 9)')
+parser.add_argument('--initial-guess-exponent', type=int, default=-6,
+                    help='Exponent to apply to all guesses (e.g., -6 for microM)')
+parser.add_argument('--guess-steps', type=int, default=1000,
+                    help='Number of steps to try in the initial guess range')
 parser.add_argument('--no-show', action='store_true')
 args = parser.parse_args()
+# Add fallback for guess_steps
+guess_steps = getattr(args, 'guess_steps', 1000)
 
 
 def select_input_file(directory):
@@ -140,27 +147,62 @@ class Fit(LigandEquib):
                 Lbound += float(n)*PorPL*self.Ptot
             self.L.append(max(0.0, Lo-Lbound))
 
-    def fit_Ks(self, guess=args.initial_guess): # make a guess
-        p = [ 1./guess for i in range(len(self.eF)-1) ]
-        p[1] = 1./(2*10.**-8)
-        p[2] = 1./(4*10.**-7)
-        p[3] = 1./(4*10.**-3)
+    def fit_Ks(self, guess_range):
+        min_coeff, max_coeff = guess_range
+        fixed_exp = args.initial_guess_exponent
 
-        # now minimize scipy.fmin_X functions
-        q = optimize.fmin_powell(self.err_func, p, disp=0) 
-        #q = optimize.fmin_bfgs(self.err_func, p, disp=0)
+        # Adjusting step size to ensure no skipping
+        guess_steps = args.guess_steps  # You can also set a specific step size manually
+        step_size = (max_coeff - min_coeff) / guess_steps
+        guesses = numpy.arange(min_coeff, max_coeff + step_size, step_size) * (10 ** fixed_exp)
 
-        # Alternatively use least squares
-        #q = optimize.leastsq(self.err_func_array, p, args=(self.L))[0]
+        best_r2 = -1
+        best_params = None
+        best_kd_data = []
+        best_chi = None
+        best_mod = None
+        best_guess = None  # Variable to store the best guess
 
-        # print stats
-        kd_data = []
-        for i, val in enumerate(1. / numpy.array(q)):
-            kd_val = val * 1e6
-            print("Kd%i (uM) = %.6f" % (i + 1, kd_val))
-            kd_data.append([i + 1, kd_val])
+        for guess in guesses:
+            p = [1. / guess for _ in range(len(self.eF) - 1)]
+            custom_values = {
+                1: 1. / (2e-8),
+                2: 1. / (4e-7),
+                3: 1. / (4e-3)
+            }
 
-        #Write out results
+            for idx, val in custom_values.items():
+                if idx < len(p):
+                    p[idx] = val
+
+            q = optimize.fmin_powell(self.err_func, p, disp=0)
+            mod = self.fractions(self.L, q)
+            r = stats.pearsonr(numpy.ndarray.flatten(numpy.array(mod)),
+                               numpy.ndarray.flatten(numpy.array(self.eF)))[0]
+            r2 = r ** 2
+            print(f"Tested guess: {guess:.2e}, R²: {r2:.4f}")
+
+            # Check if this guess gives a better R² value
+            if r2 > best_r2:
+                best_r2 = r2
+                best_guess = guess  # Store the best guess
+                best_params = q
+                best_chi = self.err_func(q)
+                best_mod = mod
+                best_kd_data = [[i + 1, val * 1e6] for i, val in enumerate(1. / numpy.array(q))]
+
+        # After the loop, print out the best guess and its R²
+        print(f"\nBest tested guess: {best_guess:.2e}, with R²: {best_r2:.4f}")
+
+        # Output results for best fit
+        print("Best fit:")
+        for i, kd in best_kd_data:
+            print(f"Kd{i} (uM) = {kd:.6f}")
+        print(f"chi**2 = {best_chi:.2f}, R**2 = {best_r2:.2f}")
+
+
+
+        # Save CSV and Plot (unchanged)
         output_dir_csv = args.csv_out_dir
         output_dir_svg = args.svg_out_dir
         os.makedirs(output_dir_csv, exist_ok=True)
@@ -172,27 +214,18 @@ class Fit(LigandEquib):
         with open(csv_path, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["Kd", "uM"])
-            writer.writerows(kd_data)
+            writer.writerows(best_kd_data)
 
-            # step = i+1
-            # print(step)
-            # micro = (val * ((4-step) + 1))/step
-            # print("Kd%i (uM) = %.2f Kd_micro = %.2f" % (i+1,val*10.0**6.0, micro*10.0**6.0))
-        chi = self.err_func(q)
-        mod = self.fractions(self.L, q)
-        r = stats.pearsonr(numpy.ndarray.flatten(numpy.array(mod)), numpy.ndarray.flatten(numpy.array(self.eF)))[0]
-        print("chi**2=%.2f, R**2=%.2f" % (chi, r**2))
-        # generate hi-res data for theoretical fit
-        hr_x = numpy.arange(0, 1.25*max(self.L), 0.1 * 10.**-6)
-        hr_mod = self.fractions(hr_x, q)
+        hr_x = numpy.arange(0, 1.25 * max(self.L), 0.1 * 1e-6)
+        hr_mod = self.fractions(hr_x, best_params)
 
         plt.figure(1)
         ind = 0
-        X = numpy.array(self.L) * 10.**6
+        X = numpy.array(self.L) * 1e6
         for cf, ef in zip(hr_mod, self.eF):
-            color = self.def_color if ind == 0 else self.my_colors[ind%10]
+            color = self.def_color if ind == 0 else self.my_colors[ind % 10]
             plt.plot(X, ef, "o", color=color)
-            plt.plot(hr_x * 10**6, cf, "-", color=color)
+            plt.plot(hr_x * 1e6, cf, "-", color=color)
             ind += 1
         plt.xlabel('[ligand] (uM)')
         plt.ylabel('mole fraction')
@@ -200,6 +233,8 @@ class Fit(LigandEquib):
         if not args.no_show:
             plt.show()
         plt.close()
+
+
 
     def err_func(self, p, weight=False):
         calc = self.fractions(self.L, p)
@@ -277,6 +312,6 @@ if __name__ == "__main__":
     fit = Fit(fname)
 
     if args.model_type == 'simple':
-        fit.fit_Ks()
+        fit.fit_Ks(args.initial_guess_range)
     elif args.model_type == 'complex':
         fit.complex_fit_Ks()
