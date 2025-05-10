@@ -38,38 +38,44 @@ parser.add_argument('--initial-guess-range', nargs=2, type=float, metavar=('MIN_
                     help='Range of coefficients for initial guesses (e.g., --initial-guess-range 1 9)')
 parser.add_argument('--initial-guess-exponent', type=int, default=-6,
                     help='Exponent to apply to all guesses (e.g., -6 for microM)')
-parser.add_argument('--guess-steps', type=int, default=10000,
+parser.add_argument('--guess-steps', type=int, default=100,
                     help='Number of steps to try in the initial guess range')
 parser.add_argument('--no-show', action='store_true')
 args = parser.parse_args()
 # Add fallback for guess_steps
-guess_steps = getattr(args, 'guess_steps', 10000)
+guess_steps = getattr(args, 'guess_steps', 100)
 
 
-def select_input_file(directory):
 
+def select_input_files(directory):
     print(f"Looking for input files in: {directory}\n")
-    
+
     files = sorted([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
-    
+
     if not files:
         print("No files found in the directory.")
         exit(1)
-    
+
     for i, file in enumerate(files):
         print(f"[{i+1}] {file}")
-    
+
     while True:
         try:
-            choice = int(input("\nEnter the number of the file you want to use: ")) - 1
-            if 0 <= choice < len(files):
-                selected = os.path.join(directory, files[choice])
-                print(f"\nSelected file: {selected}\n")
-                return selected
+            choice = input("\nEnter the numbers of the files you want to use (comma separated, or 'All' for all files): ")
+            if choice.lower() == 'all':
+                return files  # Return all files
             else:
-                print("Invalid selection. Please choose a valid number.")
+                indices = [int(x) - 1 for x in choice.split(',') if x.strip().isdigit()]
+                if all(0 <= idx < len(files) for idx in indices):
+                    selected_files = [os.path.join(directory, files[i]) for i in indices]
+                    print("\nSelected files:\n" + "\n".join(selected_files) + "\n")
+                    return selected_files
+                else:
+                    print("Invalid selection. Please choose valid numbers.")
         except ValueError:
-            print("Please enter a valid number.")
+            print("Please enter valid numbers.")
+
+
 
 class LigandEquib:
 
@@ -162,7 +168,7 @@ class Fit(LigandEquib):
                 Lbound += float(n)*PorPL*self.Ptot
             self.L.append(max(0.0, Lo-Lbound))
 
-    def fit_Ks(self, guess_range):
+    def fit_Ks(self, guess_range, batch=False):  # Add batch argument here
         min_coeff, max_coeff = guess_range
         fixed_exp = args.initial_guess_exponent
 
@@ -177,6 +183,9 @@ class Fit(LigandEquib):
         best_chi = None
         best_mod = None
         best_guess = None  # Variable to store the best guess
+
+        if batch:
+            print(f"Finding best R² for '{os.path.basename(self.filename)}'...")
 
         for guess in guesses:
             p = [1. / guess for _ in range(len(self.eF) - 1)]
@@ -195,7 +204,10 @@ class Fit(LigandEquib):
             r = stats.pearsonr(numpy.ndarray.flatten(numpy.array(mod)),
                                numpy.ndarray.flatten(numpy.array(self.eF)))[0]
             r2 = r ** 2
-            print(f"Tested guess: {guess:.2e}, R²: {r2:.8f}")
+
+            if not batch:
+                print(f"Tested guess: {guess:.1e}, R²: {r2:.8f}")
+                
 
             # Check if this guess gives a better R² value
             if r2 > best_r2:
@@ -206,14 +218,15 @@ class Fit(LigandEquib):
                 best_mod = mod
                 best_kd_data = [[i + 1, val * 1e6] for i, val in enumerate(1. / numpy.array(q))]
 
-        # After the loop, print out the best guess and its R²
-        print(f"\nBest tested guess: {best_guess:.2e}, with R²: {best_r2:.8f}")
+        # After the loop, print out the best guess and its R², depending on batch mode
+        print(f"\nBest tested guess: {best_guess:.1e}, with R²: {best_r2:.8f}")
 
         # Output results for best fit
         print("Best fit:")
         for i, kd in best_kd_data:
             print(f"Kd{i} (uM) = {kd:.6f}")
         print(f"chi**2 = {best_chi:.2f}, R**2 = {best_r2:.2f}")
+        print("\n")
 
 
 
@@ -245,7 +258,7 @@ class Fit(LigandEquib):
         plt.xlabel('[ligand] (uM)')
         plt.ylabel('mole fraction')
         plt.savefig(svg_path, format='svg')
-        if not args.no_show:
+        if not args.no_show and plt.get_backend() != 'agg':
             plt.show()
         plt.close()
 
@@ -270,8 +283,9 @@ class Fit(LigandEquib):
         for cf, ef in zip(calc, self.eF):
             err = err + (cf-ef)**2
         return err
+
     #--- including lipid aggregate model ---
-    def complex_fit_Ks(self, guess=5.*10.**-3, agg=1.*10.**-3):
+    # def complex_fit_Ks(self, guess=5.*10.**-3, agg=1.*10.**-3):
         # make a guess for KPL's
         p = [ 1./guess for i in range(len(self.eF)-1) ]
         # append K for lipid aggregate model
@@ -311,11 +325,11 @@ class Fit(LigandEquib):
         plt.ylabel('mole fraction')
         svg_path = os.path.join(args.svg_out_dir, f"{self.base_name}_fit_{self.date_stamp}.svg")
         plt.savefig(svg_path, format='svg')
-        if not args.no_show:
+        if not args.no_show and plt.get_backend() != 'agg':
             plt.show()
         plt.close()
 
-    def err_func_agg(self, p, n=2):
+    # def err_func_agg(self, p, n=2):
         p = list(p)
         Ka = p.pop()
         L = self.free_lipid(self.L, Ka)
@@ -323,10 +337,15 @@ class Fit(LigandEquib):
         return numpy.square(calc - self.eF).sum()
 
 if __name__ == "__main__":
-    fname = select_input_file(args.input_dir)
-    fit = Fit(fname)
+    filenames = select_input_files(args.input_dir)
+    batch_mode = len(filenames) > 1  # True if more than 1 file is selected
 
-    if args.model_type == 'simple':
-        fit.fit_Ks(args.initial_guess_range)
-    elif args.model_type == 'complex':
-        fit.complex_fit_Ks()
+    for fname in filenames:
+        fit = Fit(fname)
+        if args.model_type == 'simple':
+            fit.fit_Ks(args.initial_guess_range, batch=batch_mode)  # Pass batch_mode here
+        elif args.model_type == 'complex':
+            fit.complex_fit_Ks()
+
+
+
