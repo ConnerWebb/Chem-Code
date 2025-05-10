@@ -4,6 +4,7 @@ import os
 import csv
 import numpy
 import argparse
+import platform
 import matplotlib.pyplot as plt
 from datetime import datetime
 from scipy import optimize
@@ -13,22 +14,36 @@ from scipy import stats
 print("\n")
 
 
+# Detect current OS
+current_os = platform.system()
+
+# Get current date once
+current_date = datetime.today().strftime('%Y-%m-%d')
+
 # Argument parser setup
 parser = argparse.ArgumentParser()
-parser.add_argument('--input-dir', default='/home/cow/Chem-Code/File_Input/AAD2O_thermodynamics')
-parser.add_argument('--csv-out-dir', default='/home/cow/Chem-Code/File_Output/Ligand_Equilibrium_061021')
-parser.add_argument('--svg-out-dir', default='/home/cow/Chem-Code/Graphs/AAD20_Graphs')
+
+# Set paths depending on OS
+if current_os == "Windows":
+    parser.add_argument('--input-dir', default=r'c:\Users\kevan\Documents\Russell Group\Python Script\EDDAD2O_thermodynamics')
+    parser.add_argument('--csv-out-dir', default=r'c:\Users\kevan\Documents\Russell Group\SR1-ADP_D2O\Thermodynamics_EDDA\EDDA_D2O_1')
+    parser.add_argument('--svg-out-dir', default=r'c:\Users\kevan\Documents\Russell Group\SR1-ADP_D2O\Thermodynamics_EDDA\EDDA_D2O_1')
+else:
+    parser.add_argument('--input-dir', default='/home/cow/Chem-Code/File_Input/AAD2O_thermodynamics')
+    parser.add_argument('--csv-out-dir', default='/home/cow/Chem-Code/File_Output/Ligand_Equilibrium_061021')
+    parser.add_argument('--svg-out-dir', default='/home/cow/Chem-Code/Graphs/AAD20_Graphs')
+
 parser.add_argument('--model-type', choices=['simple', 'complex'], default='simple')
 parser.add_argument('--initial-guess-range', nargs=2, type=float, metavar=('MIN_COEFF', 'MAX_COEFF'), default=[1.0, 10.0],
                     help='Range of coefficients for initial guesses (e.g., --initial-guess-range 1 9)')
 parser.add_argument('--initial-guess-exponent', type=int, default=-6,
                     help='Exponent to apply to all guesses (e.g., -6 for microM)')
-parser.add_argument('--guess-steps', type=int, default=1000,
+parser.add_argument('--guess-steps', type=int, default=10000,
                     help='Number of steps to try in the initial guess range')
 parser.add_argument('--no-show', action='store_true')
 args = parser.parse_args()
 # Add fallback for guess_steps
-guess_steps = getattr(args, 'guess_steps', 1000)
+guess_steps = getattr(args, 'guess_steps', 10000)
 
 
 def select_input_file(directory):
@@ -180,7 +195,7 @@ class Fit(LigandEquib):
             r = stats.pearsonr(numpy.ndarray.flatten(numpy.array(mod)),
                                numpy.ndarray.flatten(numpy.array(self.eF)))[0]
             r2 = r ** 2
-            print(f"Tested guess: {guess:.2e}, R²: {r2:.4f}")
+            print(f"Tested guess: {guess:.2e}, R²: {r2:.8f}")
 
             # Check if this guess gives a better R² value
             if r2 > best_r2:
@@ -192,7 +207,7 @@ class Fit(LigandEquib):
                 best_kd_data = [[i + 1, val * 1e6] for i, val in enumerate(1. / numpy.array(q))]
 
         # After the loop, print out the best guess and its R²
-        print(f"\nBest tested guess: {best_guess:.2e}, with R²: {best_r2:.4f}")
+        print(f"\nBest tested guess: {best_guess:.2e}, with R²: {best_r2:.8f}")
 
         # Output results for best fit
         print("Best fit:")
