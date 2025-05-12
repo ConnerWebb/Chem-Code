@@ -38,12 +38,12 @@ parser.add_argument('--initial-guess-range', nargs=2, type=float, metavar=('MIN_
                     help='Range of coefficients for initial guesses (e.g., --initial-guess-range 1 9)')
 parser.add_argument('--initial-guess-exponent', type=int, default=-6,
                     help='Exponent to apply to all guesses (e.g., -6 for microM)')
-parser.add_argument('--guess-steps', type=int, default=100,
+parser.add_argument('--guess-steps', type=int, default=1000,
                     help='Number of steps to try in the initial guess range')
 parser.add_argument('--no-show', action='store_true')
 args = parser.parse_args()
 # Add fallback for guess_steps
-guess_steps = getattr(args, 'guess_steps', 100)
+guess_steps = getattr(args, 'guess_steps', 1000)
 
 
 
@@ -206,7 +206,7 @@ class Fit(LigandEquib):
             r2 = r ** 2
 
             if not batch:
-                print(f"Tested guess: {guess:.1e}, R²: {r2:.8f}")
+                print(f"Tested guess: {guess:.2e}, R²: {r2:.8f}")
                 
 
             # Check if this guess gives a better R² value
@@ -219,7 +219,7 @@ class Fit(LigandEquib):
                 best_kd_data = [[i + 1, val * 1e6] for i, val in enumerate(1. / numpy.array(q))]
 
         # After the loop, print out the best guess and its R², depending on batch mode
-        print(f"\nBest tested guess: {best_guess:.1e}, with R²: {best_r2:.8f}")
+        print(f"\nBest tested guess: {best_guess:.2e}, with R²: {best_r2:.8f}")
 
         # Output results for best fit
         print("Best fit:")
